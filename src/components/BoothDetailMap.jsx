@@ -53,7 +53,7 @@ const BoothDetailMap = ({
   assemblyConstituency = "NEW DELHI",
   electoralData = null,
   center = null, 
-  zoom = 17,
+  zoom = 1,
   onBuildingClick = null
 }) => {
   const [boothBoundaryData, setBoothBoundaryData] = useState(null);
@@ -99,6 +99,14 @@ const BoothDetailMap = ({
             buildingsUrl = '/data/geospatial/RKPuram_Booth_17_Plots_With_Predictions.geojson';
             useClipWithPlots = true;
           }
+          
+          // New Delhi Booth 103 (Block-E, B.K.Dutt Colony) uses dedicated file with voter predictions
+          // Since file contains only Booth 103 data, no filtering/clipping needed
+          let useDedicatedFile = false;
+          if (normalizedAssembly === 'NEW DELHI' && boothStr === '103') {
+            buildingsUrl = '/data/geospatial/NewDelhi_BlockE_Booth_103_Plots_With_Predictions.geojson';
+            useDedicatedFile = true;
+          }
 
           // Load booth boundary data
           try {
@@ -141,7 +149,7 @@ const BoothDetailMap = ({
               console.log('Total building features:', buildingGeoData.features?.length);
               
               if (useClipWithPlots) {
-                // Clip plots to the booth boundary
+                // Clip plots to the booth boundary (RK Puram Booth 17)
                 try {
                   const boothFeat = (boothBoundaryData?.features && boothBoundaryData.features[0]) ? boothBoundaryData.features[0] : null;
                   // If booth boundary not yet in state (race), create a turf polygon from freshly fetched data
@@ -241,6 +249,10 @@ const BoothDetailMap = ({
                   // Fallback: render all plots without clipping
                   setBuildingData(buildingGeoData);
                 }
+              } else if (useDedicatedFile) {
+                // Dedicated file contains only this booth's data - use directly without filtering
+                console.log('Using dedicated file - no filtering needed');
+                setBuildingData(buildingGeoData);
               } else {
                 // Filter for the specific booth with case-insensitive assembly matching (New Delhi case)
                 const filteredBuildings = {

@@ -4,6 +4,7 @@
 export const BOOTH_COORDINATES = {
   "NEW DELHI": {
     "1": [28.6411507, 77.205307], // From the provided geospatial data
+    "103": [28.58278, 77.21646], // Block-E, B.K.Dutt Colony - Booth 103
     // Add more booth coordinates as they become available
     "2": [28.6420, 77.2060],
     "3": [28.6430, 77.2070],
@@ -26,6 +27,12 @@ export const BOOTH_METADATA = {
       address: "Mandir Marg",
       ward: "New Delhi",
       locality: "MANDIR MARG"
+    },
+    "103": {
+      name: "Polling Station Booth 103",
+      address: "Block-E, B.K.Dutt Colony",
+      ward: "New Delhi",
+      locality: "B.K. DUTT COLONY"
     }
   },
   "R K PURAM": {
@@ -74,6 +81,7 @@ export const hasDetailedBoothData = (assemblyConstituency, boothNumber) => {
 
   const result = (
     (normalizedAssembly === "NEW DELHI" && boothStr === "1") ||
+    (normalizedAssembly === "NEW DELHI" && boothStr === "103") ||
     (normalizedAssembly === "R K PURAM" && boothStr === "17")
   );
 
