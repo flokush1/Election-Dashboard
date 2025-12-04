@@ -1,0 +1,199 @@
+{
+  "parliament": {
+    "name": "NEW DELHI",
+    "totalBooths": 1395,
+    "totalVotes": 880747,
+    "assemblies": 10,
+    "wards": 27
+  },
+  "assemblies": {
+    "Karol Bagh": {
+      "booths": 165,
+      "votes": 102505,
+      "winner": "AAP"
+    },
+    "Patel Nagar": {
+      "booths": 167,
+      "votes": 117026,
+      "winner": "AAP"
+    },
+    "Moti Nagar": {
+      "booths": 161,
+      "votes": 109055,
+      "winner": "BJP"
+    },
+    "Delhi Cantt": {
+      "booths": 85,
+      "votes": 47293,
+      "winner": "AAP"
+    },
+    "Rajinder Nagar": {
+      "booths": 140,
+      "votes": 96751,
+      "winner": "BJP"
+    },
+    "New Delhi": {
+      "booths": 123,
+      "votes": 60015,
+      "winner": "BJP"
+    },
+    "Kasturba Nagar": {
+      "booths": 137,
+      "votes": 84148,
+      "winner": "BJP"
+    },
+    "Malviya Nagar": {
+      "booths": 144,
+      "votes": 84491,
+      "winner": "BJP"
+    },
+    "R K Puram": {
+      "booths": 126,
+      "votes": 76017,
+      "winner": "BJP"
+    },
+    "Greater Kailash": {
+      "booths": 147,
+      "votes": 103446,
+      "winner": "BJP"
+    }
+  },
+  "wards": {
+    "Dev Nagar": {
+      "booths": 45,
+      "votes": 30904,
+      "assembly": "Karol Bagh"
+    },
+    "Karol Bagh": {
+      "booths": 68,
+      "votes": 43110,
+      "assembly": "Karol Bagh"
+    },
+    "Pahar Ganj": {
+      "booths": 52,
+      "votes": 28491,
+      "assembly": "Karol Bagh"
+    },
+    "West Patel Nagar": {
+      "booths": 45,
+      "votes": 30796,
+      "assembly": "Patel Nagar"
+    },
+    "East Patel Nagar": {
+      "booths": 53,
+      "votes": 38232,
+      "assembly": "Patel Nagar"
+    },
+    "Ranjit Nagar": {
+      "booths": 49,
+      "votes": 34705,
+      "assembly": "Patel Nagar"
+    },
+    "Baljit Nagar": {
+      "booths": 20,
+      "votes": 13293,
+      "assembly": "Patel Nagar"
+    },
+    "Moti Nagar": {
+      "booths": 83,
+      "votes": 56845,
+      "assembly": "Moti Nagar"
+    },
+    "Ramesh Nagar": {
+      "booths": 38,
+      "votes": 26631,
+      "assembly": "Moti Nagar"
+    },
+    "Karam Pura": {
+      "booths": 40,
+      "votes": 25579,
+      "assembly": "Moti Nagar"
+    },
+    "Delhi Cantt": {
+      "booths": 85,
+      "votes": 47293,
+      "assembly": "Delhi Cantt"
+    },
+    "Rajinder Nagar": {
+      "booths": 49,
+      "votes": 30549,
+      "assembly": "Rajinder Nagar"
+    },
+    "Inder Puri": {
+      "booths": 43,
+      "votes": 31187,
+      "assembly": "Rajinder Nagar"
+    },
+    "Naraina": {
+      "booths": 48,
+      "votes": 35015,
+      "assembly": "Rajinder Nagar"
+    },
+    "New Delhi": {
+      "booths": 123,
+      "votes": 60015,
+      "assembly": "New Delhi"
+    },
+    "Kotla Mubarakpur": {
+      "booths": 83,
+      "votes": 53249,
+      "assembly": "Kasturba Nagar"
+    },
+    "Amar Colony": {
+      "booths": 35,
+      "votes": 20791,
+      "assembly": "Kasturba Nagar"
+    },
+    "Andrews Ganj": {
+      "booths": 19,
+      "votes": 10108,
+      "assembly": "Kasturba Nagar"
+    },
+    "Green Park": {
+      "booths": 35,
+      "votes": 21534,
+      "assembly": "Malviya Nagar"
+    },
+    "Hauz Khaz": {
+      "booths": 40,
+      "votes": 22906,
+      "assembly": "Malviya Nagar"
+    },
+    "Malviya Nagar": {
+      "booths": 69,
+      "votes": 40051,
+      "assembly": "Malviya Nagar"
+    },
+    "RK Puram": {
+      "booths": 75,
+      "votes": 45138,
+      "assembly": "R K Puram"
+    },
+    "Vasant Vihar": {
+      "booths": 25,
+      "votes": 16230,
+      "assembly": "R K Puram"
+    },
+    "Munirka": {
+      "booths": 26,
+      "votes": 14649,
+      "assembly": "R K Puram"
+    },
+    "Greater Kailash": {
+      "booths": 119,
+      "votes": 82496,
+      "assembly": "Greater Kailash"
+    },
+    "Chirag Delhi": {
+      "booths": 15,
+      "votes": 12053,
+      "assembly": "Greater Kailash"
+    },
+    "Chittaranjan Park": {
+      "booths": 13,
+      "votes": 8897,
+      "assembly": "Greater Kailash"
+    }
+  },
+  "lastUpdated": "2025-01-01"
+}

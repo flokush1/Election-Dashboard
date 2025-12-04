@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment variables
+.env
+.env.local
+.env.production
+.venv
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Large data files
+*.xlsx
+*.xls
+*.csv
+!predictions_r_k_puram.csv
+!predictions_new_delhi.csv
+!newdelhi_voter_predictions.csv
+
+# Model files (too large for git)
+*.pkl
+*.pth
+*.h5
+*.model
+*.weights
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
+*.ipynb
+
+# GeoJSON files (keep small ones, exclude large)
+Block-E*.geojson
+R.K.Puram*.geojson
+Shanti*.geojson
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+~$*
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Build artifacts
+*.pyc
