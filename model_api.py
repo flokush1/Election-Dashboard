@@ -386,9 +386,14 @@ def normalize_voter_payload_for_model(voter_input, row_index_fallback=1):
     Normalize an arbitrary voter JSON payload into the canonical fields
     expected by VoterPredictor.predict_voters_vectorized.
 
-    This mirrors the mapping logic from /api/upload-voter-data so that
-    /api/predict behaves consistently even if the frontend sends raw Excel-like
-    columns (e.g. 'voters id', 'section no & road name', 'Locality', etc).
+    This mirrors the EXACT mapping logic from the Streamlit app's preprocessing
+    so that /api/predict behaves identically to the Streamlit dashboard.
+    
+    Key alignment with Streamlit preprocessing:
+    - Age bucketing handles <18 as 18-25
+    - Religion/Caste/Economic mapped to exact tokens
+    - Unknown caste: Hindu→drop feature, Non-Hindu→"no caste system"
+    - Categorical features set to None when appropriate (not forced to defaults)
     """
 
     # local helpers (do NOT depend on DataFrame)
@@ -428,7 +433,7 @@ def normalize_voter_payload_for_model(voter_input, row_index_fallback=1):
                 if v is None:
                     continue
                 s = str(v).strip()
-                if s != "" and s.lower() != "nan":
+                if s != "" and s.lower() not in {"nan", "na", "n/a", "none", "null"}:
                     return s
 
         # partial match: name substring in key
@@ -440,39 +445,55 @@ def normalize_voter_payload_for_model(voter_input, row_index_fallback=1):
                     if v is None:
                         continue
                     s = str(v).strip()
-                    if s != "" and s.lower() != "nan":
+                    if s != "" and s.lower() not in {"nan", "na", "n/a", "none", "null"}:
                         return s
 
         return default
 
-    # --- ECONOMIC CATEGORY NORMALIZATION (same mapping as upload-voter-data) ---
-    econ_canon_map = {
-        '1': 'LOW INCOME AREAS', 'LOW': 'LOW INCOME AREAS', 'L': 'LOW INCOME AREAS',
-        '2': 'LOWER MIDDLE CLASS', 'LM': 'LOWER MIDDLE CLASS',
-        '3': 'MIDDLE CLASS', 'M': 'MIDDLE CLASS', 'MID': 'MIDDLE CLASS', 'E': 'MIDDLE CLASS',
-        '4': 'UPPER MIDDLE CLASS', 'UM': 'UPPER MIDDLE CLASS', 'UPPER': 'UPPER MIDDLE CLASS',
-        '5': 'PREMIUM AREAS', 'P': 'PREMIUM AREAS', 'PREMIUM': 'PREMIUM AREAS',
-        'HIGH': 'PREMIUM AREAS', 'H': 'PREMIUM AREAS'
-    }
+    # --- ECONOMIC CATEGORY NORMALIZATION (EXACT model vocabulary matching) ---
+    # ✅ Use economic_category column directly (already has full text values from Excel)
+    # Valid values: LOW INCOME AREAS, LOWER MIDDLE CLASS, MIDDLE CLASS, UPPER MIDDLE CLASS, PREMIUM AREAS
+    valid_econ_categories = ['LOW INCOME AREAS', 'LOWER MIDDLE CLASS', 'MIDDLE CLASS', 'UPPER MIDDLE CLASS', 'PREMIUM AREAS']
+    
+    # --- LOCALITY NORMALIZATION ---
+    # Valid locality values from MADIPUR constituency
+    valid_localities = [
+        'RAGHUBIR NAGAR', 'VISHAL ENCLAVE', 'PUNJABI BAGH', 'SHIVAJI AREA', 'TAGORE GARDEN EXT.',
+        'PASCHIM PURI', 'MADIPUR COLONY', 'MADIPUR JJ COLONY', 'BASAI DARAPUR', 'BALI NAGAR',
+        'MADIPUR', 'SFS MADIPUR', 'MADIPUR VILLAGE', 'PUNJABI BAGH EXTN', 'RAJA GARDEN'
+    ]
 
-    raw_econ = find_value(
-        ['economic_category', 'Economic Category', 'economic status',
-         'Economic Status', 'economic_status', 'income_level', 'class', 'Class']
-    )
-    econ_code = find_value(['economic_category_code', 'econ_code', 'eco_code'])
+    # Get economic category directly from Excel (already has full text values)
+    raw_econ = find_value(['economic_category', 'Economic Category'])
+    econ_code = find_value(['economic_category_code', 'econ_code', 'eco_code'])  # Keep for reference but don't use for mapping
+    
+    print(f"\n🔍 ECONOMIC CATEGORY MAPPING DEBUG:")
+    print(f"   📥 RAW INPUT:")
+    print(f"      economic_category (from Excel): {repr(raw_econ)}")
+    print(f"      economic_category_code (reference only): {repr(econ_code)}")
+    
+    # Normalize to uppercase and validate
+    econ_full = str(raw_econ).strip().upper() if raw_econ else 'MIDDLE CLASS'
+    
+    # Validate against known values
+    if econ_full not in valid_econ_categories:
+        print(f"   ⚠️ WARNING: Unknown economic category '{econ_full}', defaulting to MIDDLE CLASS")
+        econ_full = 'MIDDLE CLASS'
+    else:
+        print(f"   ✅ Valid economic category: {repr(econ_full)}")
+    
+    print(f"   ✅ FINAL VALUE: {repr(econ_full)}")
 
-    econ_val = (raw_econ or '').strip()
-    if not econ_val and econ_code:
-        econ_val = econ_code.strip()
-
-    if not econ_val:
-        econ_val = 'MIDDLE CLASS'
-
-    econ_key = econ_val.upper().strip()
-    econ_full = econ_canon_map.get(econ_key, econ_key)
-    # if econ_full is still a short code that exists in map, expand it
-    if len(econ_full) <= 3 and econ_full in econ_canon_map:
-        econ_full = econ_canon_map[econ_full]
+    # --- Derive income level from economic category (model uses both economic and income features) ---
+    if econ_full in ['PREMIUM AREAS', 'UPPER MIDDLE CLASS']:
+        income_level = 'income_high'
+    elif econ_full in ['LOW INCOME AREAS', 'LOWER MIDDLE CLASS']:
+        income_level = 'income_low'
+    else:  # MIDDLE CLASS
+        income_level = 'income_middle'
+    
+    print(f"   📊 DERIVED INCOME: '{income_level}'")
+    print(f"   💡 Model expects: economic='{econ_full}' AND income='{income_level}'")
 
     # --- voter_id detection (simple version) ---
     voter_id = (
@@ -482,7 +503,28 @@ def normalize_voter_payload_for_model(voter_input, row_index_fallback=1):
         f'VOTER_{row_index_fallback:05d}'
     )
 
-    # --- canonical mapped voter dict (matches upload-voter-data output) ---
+    # --- Get raw religion value (needed for caste logic) ---
+    raw_religion = find_value(['religion', 'Religion']) or voter_input.get('religion')
+    religion_upper = str(raw_religion).strip().upper() if raw_religion else 'HINDU'
+
+    # --- Get raw caste value ---
+    raw_caste = find_value(['caste', 'Caste', 'Category', 'category',
+                           'Social Category', 'social_category']) or voter_input.get('caste')
+    caste_upper = str(raw_caste).strip().upper() if raw_caste else ''
+    
+    # Get locality and age for debugging
+    raw_locality = find_value(['Locality', 'locality', 'Area', 'area', 'Location', 'location']) or voter_input.get('locality') or voter_input.get('Locality') or ''
+    raw_age = safe_int(find_value(['age', 'Age']), 30)
+    
+    print(f"\n🔍 DEMOGRAPHIC MAPPING DEBUG:")
+    print(f"   📥 RAW INPUT:")
+    print(f"      Age: {raw_age}")
+    print(f"      Religion: '{raw_religion}' → '{religion_upper}'")
+    print(f"      Caste: '{raw_caste}' → '{caste_upper}'")
+    print(f"      Locality: '{raw_locality}'")
+    print(f"   💡 Model will map these to feature tokens (e.g., age=Age_36-45, religion=Religion_Hindu, etc.)")
+
+    # --- canonical mapped voter dict (matches Streamlit preprocessing EXACTLY) ---
     mapped_voter = {
         'voter_id': voter_id,
         'name': (
@@ -494,20 +536,13 @@ def normalize_voter_payload_for_model(voter_input, row_index_fallback=1):
         'gender': (find_value(['gender', 'Gender', 'sex', 'Sex']) or
                    voter_input.get('gender') or
                    'Unknown').upper(),
-        'religion': (find_value(['religion', 'Religion']) or
-                     voter_input.get('religion') or
-                     'HINDU').upper(),
-        'caste': (find_value(['caste', 'Caste', 'Category', 'category',
-                              'Social Category', 'social_category']) or
-                  voter_input.get('caste') or
-                  'GENERAL').upper(),
+        'religion': religion_upper,
+        'caste': caste_upper,
         'economic_category': econ_full,
-        'economic_category_code': econ_code or econ_key,
-        'locality': (
-            find_value(['Locality', 'locality', 'Area', 'area', 'Location', 'location']) or
-            voter_input.get('locality') or
-            'Unknown'
-        ),
+        'economic_category_code': econ_code or econ_key if econ_code or (econ_val and len(econ_val) <= 3) else None,
+        'income': income_level,  # Derived from economic category
+        'Locality': find_value(['Locality']) or '',  # Use Locality column directly
+        'locality': find_value(['Locality']) or '',  # Same value, different key for compatibility
         'assembly': (
             find_value(['assembly name', 'assembly', 'Assembly',
                         'Constituency', 'AC', 'assembly_constituency', 'ac_name']) or
@@ -534,7 +569,8 @@ def normalize_voter_payload_for_model(voter_input, row_index_fallback=1):
         'land_rate_per_sqm': safe_float(find_value(['land_rate_per_sqm', 'land_rate']), 0.0),
         'construction_cost_per_sqm': safe_float(find_value(['construction_cost_per_sqm', 'construction_cost']), 0.0),
         'population': safe_float(find_value(['population', 'Population']), 0.0),
-        'male_female_ratio': safe_float(find_value(['male_female_ratio', 'MaleToFemaleRatio']), 1.0),
+        'MaleToFemaleRatio': safe_float(find_value(['MaleToFemaleRatio', 'male_female_ratio', 'MaleToFemaleRatio', 'male_to_female_ratio']), 1.0),
+        'male_female_ratio': safe_float(find_value(['male_female_ratio', 'MaleToFemaleRatio', 'male_to_female_ratio']), 1.0),
 
         # optional family metadata (kept for completeness)
         'household_id': find_value(['household_id']) or voter_input.get('household_id'),
@@ -562,6 +598,21 @@ def normalize_voter_payload_for_model(voter_input, row_index_fallback=1):
     # If booth_no ended up 0 but partno is nonzero, sync them
     if mapped_voter['booth_no'] == 0 and mapped_voter['partno'] != 0:
         mapped_voter['booth_no'] = mapped_voter['partno']
+    
+    print(f"\n✅ FINAL MAPPED VOTER DATA:")
+    print(f"   voter_id: {mapped_voter['voter_id']}")
+    print(f"   name: {mapped_voter['name']}")
+    print(f"   age: {mapped_voter['age']}")
+    print(f"   religion: {mapped_voter['religion']}")
+    print(f"   caste: {mapped_voter['caste']}")
+    print(f"   economic_category: {mapped_voter['economic_category']}")
+    print(f"   income: {mapped_voter['income']}")
+    print(f"   locality: {mapped_voter.get('locality', mapped_voter.get('Locality'))}")
+    print(f"   booth_no: {mapped_voter['booth_no']}")
+    print(f"   land_rate: {mapped_voter['land_rate_per_sqm']}")
+    print(f"   construction_cost: {mapped_voter['construction_cost_per_sqm']}")
+    print(f"   population: {mapped_voter['population']}")
+    print(f"   male_female_ratio: {mapped_voter['male_female_ratio']}")
 
     return mapped_voter
 
@@ -581,33 +632,214 @@ class VoterPredictor(App1VoterPredictor):
         self._last_preprocess_diag = {}
         self._last_prediction_diag = {}
         self.alignment_thresholds = {"core": 0.7, "leaning": 0.4}
+        self._debug_mode = True  # Enable detailed debugging
+    
+    def preprocess_voter_data_vectorized(self, voter_rows):
+        """Override to add debugging"""
+        print(f"\n📊 PREPROCESSING INPUT:")
+        print(f"   Number of voters: {len(voter_rows)}")
+        if len(voter_rows) == 1:
+            v = voter_rows[0]
+            print(f"   Voter data keys: {list(v.keys())}")
+            print(f"   age: {v.get('age')}, age_category: {v.get('age_category')}")
+            print(f"   religion: {v.get('religion')}")
+            print(f"   caste: {v.get('caste')}")
+            print(f"   economic: {v.get('economic')}")
+            print(f"   locality: {get_any(v, 'Locality', 'locality')}")
+        
+        # Call parent preprocessing
+        X = super().preprocess_voter_data_vectorized(voter_rows)
+        
+        # Add debugging for API
+        if self._debug_mode and len(voter_rows) == 1:
+            print(f"\n📊 FEATURE MATRIX OUTPUT:")
+            print(f"   Shape: {X.shape}")
+            print(f"   Non-zero features: {np.count_nonzero(X)}/{X.shape[1]}")
+            
+            # Show non-zero feature indices and values
+            nz_indices = np.where(np.abs(X[0]) > 1e-8)[0]
+            print(f"   Non-zero count: {len(nz_indices)}")
+            
+            if self.feature_names:
+                print(f"\n   Non-zero features:")
+                for idx in nz_indices:
+                    if idx < len(self.feature_names):
+                        fname = self.feature_names[idx]
+                        val = X[0, idx]
+                        # Highlight locality features
+                        if 'locality=' in fname.lower() or 'PUNJABI' in fname.upper():
+                            print(f"      🎯 [{idx}] {fname}: {val:.4f}")
+                        else:
+                            print(f"      [{idx}] {fname}: {val:.4f}")
+        
+        return X
     
     def load_model(self, model_bytes):
-        """Load model from bytes (API endpoint compatibility)"""
+        """
+        Load model from bytes (API endpoint compatibility)
+        
+        This is a non-Streamlit version of the parent's load_model method
+        that works in a Flask API context without st.error() calls.
+        """
         try:
             print("📦 Loading model from bytes...")
-            model_data = pickle.loads(model_bytes)
             
-            # Use parent class's load_model_dict method
-            success = self.load_model_dict(model_data)
+            # Parse pickle or torch from bytes
+            model_data = None
             
-            if success:
-                self.model_loaded = True
-                print(f"✅ Model loaded successfully")
-                print(f"   Features: {len(self.feature_names)}")
-                print(f"   Parties: {self.party_names}")
-                print(f"   Has vectorizer: {self.vectorizer is not None}")
-                print(f"   Has scaler: {self.scaler is not None}")
-                return True
-            else:
-                print("❌ Model loading failed")
-                return False
+            # Try torch first if available
+            if torch is not None:
+                try:
+                    md = torch.load(io.BytesIO(model_bytes), map_location="cpu")
+                    if hasattr(md, 'state_dict'):
+                        model_data = {'model_state_dict': md.state_dict()}
+                    elif isinstance(md, dict):
+                        model_data = md
+                    else:
+                        model_data = None
+                except Exception:
+                    model_data = None
+            
+            # Fallback to pickle
+            if model_data is None:
+                try:
+                    md = pickle.loads(model_bytes)
+                    if hasattr(md, 'state_dict'):
+                        model_data = {'model_state_dict': md.state_dict()}
+                    elif isinstance(md, dict):
+                        model_data = md
+                    else:
+                        model_data = None
+                except Exception as e:
+                    print(f"❌ Unsupported model format: {e}")
+                    return False, f"Unsupported model format: {str(e)}"
+            
+            if not isinstance(model_data, dict):
+                print("❌ Model file did not contain a dict-like checkpoint")
+                return False, "Model file did not contain a dict-like checkpoint"
+            
+            # Store raw model data
+            self._raw_model_data = model_data
+            
+            # Helper to find first present key
+            def first_present(d, keys, default=None):
+                for k in keys:
+                    if k in d:
+                        return d[k]
+                return default
+            
+            # Extract model components
+            self.model_state_dict = first_present(
+                model_data,
+                ['model_state_dict', 'state_dict', 'weights', 'params'],
+                {}
+            )
+            
+            self.feature_names = first_present(
+                model_data,
+                ['feature_names', 'features', 'feature_list'],
+                []
+            )
+            
+            self.party_names = first_present(
+                model_data,
+                ['party_names', 'classes', 'class_names'],
+                ['BJP', 'Congress', 'AAP', 'Others', 'NOTA']
+            )
+            
+            self.scaler = first_present(model_data, ['scaler', 'standardizer', 'preprocessor'], None)
+            self.vectorizer = first_present(model_data, ['vectorizer', 'dict_vectorizer', 'dv'], None)
+            self.booth_id_to_idx = first_present(model_data, ['booth_id_to_idx', 'booth_map', 'booth_index'], {})
+            
+            # Normalize model_state_dict keys
+            if isinstance(self.model_state_dict, dict):
+                msd = self.model_state_dict
+                
+                cand_beta_P = first_present(msd, ['beta_P', 'betaP', 'party_beta', 'W_party', 'linear_P.weight'], None)
+                cand_beta_T = first_present(msd, ['beta_T', 'betaT', 'turnout_beta', 'W_turnout', 'linear_T.weight'], None)
+                cand_gamma0 = first_present(msd, ['gamma0', 'party_bias', 'b_party', 'linear_P.bias'], None)
+                cand_alpha0 = first_present(msd, ['alpha0', 'turnout_bias', 'b_turnout', 'linear_T.bias'], None)
+                cand_boothP = first_present(msd, ['booth_effects_P', 'boothP', 'booth_party'], None)
+                cand_boothT = first_present(msd, ['booth_effects_T', 'boothT', 'booth_turnout'], None)
+                
+                norm = {}
+                if cand_beta_P is not None: norm['beta_P'] = cand_beta_P
+                if cand_beta_T is not None: norm['beta_T'] = cand_beta_T
+                if cand_gamma0 is not None: norm['gamma0'] = cand_gamma0
+                if cand_alpha0 is not None: norm['alpha0'] = cand_alpha0
+                if cand_boothP is not None: norm['booth_effects_P'] = cand_boothP
+                if cand_boothT is not None: norm['booth_effects_T'] = cand_boothT
+                
+                if norm:
+                    self.model_state_dict = norm
+            
+            # Validate
+            if not self.model_state_dict or len(self.feature_names) == 0:
+                print("❌ Missing model_state_dict or feature_names")
+                return False, "Missing model_state_dict or feature_names in checkpoint"
+            
+            # Wrap vectorizer if it's a dict
+            if isinstance(self.vectorizer, dict):
+                vec = self.vectorizer
+                class DummyVectorizer:
+                    def __init__(self, d):
+                        self.feature_names_ = d.get('feature_names_', d.get('feature_names', [])) or []
+                        self.vocabulary_ = d.get('vocabulary_', {})
+                    def transform(self, records):
+                        n = len(records)
+                        m = len(self.feature_names_)
+                        out = np.zeros((n, m), dtype=float)
+                        for i, rec in enumerate(records):
+                            for j, fname in enumerate(self.feature_names_):
+                                if '=' in fname:
+                                    k, v = fname.split('=', 1)
+                                    if k in rec and str(rec[k]) == v:
+                                        out[i, j] = 1.0
+                                else:
+                                    if any(str(v) == fname for v in rec.values()):
+                                        out[i, j] = 1.0
+                        return out
+                    def get_feature_names_out(self):
+                        return list(self.feature_names_)
+                self.vectorizer = DummyVectorizer(vec)
+            
+            # Wrap scaler if it's a dict
+            if isinstance(self.scaler, dict):
+                s = self.scaler
+                mean_arr = self._convert_to_numpy_like(s.get('mean_', None))
+                scale_arr = self._convert_to_numpy_like(s.get('scale_', None))
+                n_in = int(s.get('n_features_in_', 4)) if isinstance(s.get('n_features_in_'), (int, float, np.number)) else 4
+                if mean_arr is None or len(mean_arr) != n_in:
+                    mean_arr = np.zeros(n_in, dtype=float)
+                if scale_arr is None or len(scale_arr) != n_in:
+                    scale_arr = np.ones(n_in, dtype=float)
+                class DummyScaler:
+                    def __init__(self, mean_, scale_):
+                        self.mean_ = np.asarray(mean_, dtype=float)
+                        self.scale_ = np.asarray(scale_, dtype=float)
+                    def transform(self, X):
+                        X = np.asarray(X, dtype=float)
+                        m = min(X.shape[1], self.mean_.size)
+                        X[:, :m] = (X[:, :m] - self.mean_[:m]) / (self.scale_[:m] + 1e-12)
+                        return X
+                self.scaler = DummyScaler(mean_arr, scale_arr)
+            
+            # Preprocess weights
+            self._preprocess_model_weights()
+            
+            self.model_loaded = True
+            print(f"✅ Model loaded successfully")
+            print(f"   Features: {len(self.feature_names)}")
+            print(f"   Parties: {self.party_names}")
+            print(f"   Has vectorizer: {self.vectorizer is not None}")
+            print(f"   Has scaler: {self.scaler is not None}")
+            return True, f"Model loaded successfully with {len(self.feature_names)} features and {len(self.party_names)} parties"
                 
         except Exception as e:
             print(f"❌ Model load error: {e}")
             traceback.print_exc()
             self.model_loaded = False
-            return False
+            return False, f"Model load error: {str(e)}"
     
     def predict_voter(self, voter_data):
         """
@@ -615,9 +847,122 @@ class VoterPredictor(App1VoterPredictor):
         Wraps app1.py's predict_voters_vectorized to return API format
         """
         try:
+            print(f"\n{'='*80}")
             print(f"🔮 Predicting for voter: {voter_data.get('name', 'Unknown')} (ID: {voter_data.get('voter_id', 'Unknown')})")
+            print(f"{'='*80}")
+            
+            # Debug input data
+            print(f"\n📊 INPUT VOTER DATA:")
+            print(f"   Age: {voter_data.get('age')} → Age Group will be computed")
+            print(f"   Religion: {voter_data.get('religion')}")
+            print(f"   Caste: {voter_data.get('caste')}")
+            print(f"   Economic Category: {voter_data.get('economic_category')}")
+            print(f"   Locality: {voter_data.get('Locality')} (capital L)")
+            print(f"   locality: {voter_data.get('locality')} (lower l)")
+            print(f"   Land Rate: {voter_data.get('land_rate_per_sqm')}")
+            print(f"   Construction Cost: {voter_data.get('construction_cost_per_sqm')}")
+            print(f"   Population: {voter_data.get('population')}")
+            print(f"   MaleToFemaleRatio: {voter_data.get('MaleToFemaleRatio')}")
+            print(f"   male_female_ratio: {voter_data.get('male_female_ratio')}")
+            
+            # Manually compute what the categorical dict should look like
+            print(f"\n🔍 EXPECTED CATEGORICAL FEATURES:")
+            age_val = voter_data.get('age', 0)
+            try:
+                age_int = int(float(age_val)) if age_val not in (None, '') else 0
+                if age_int < 18:
+                    age_group = "Age_18-25"
+                elif age_int <= 25:
+                    age_group = "Age_18-25"
+                elif age_int <= 35:
+                    age_group = "Age_26-35"
+                elif age_int <= 45:
+                    age_group = "Age_36-45"
+                elif age_int <= 60:
+                    age_group = "Age_46-60"
+                else:
+                    age_group = "Age_60+"
+                print(f"   Age Group: {age_group}")
+            except Exception:
+                age_group = None
+                print(f"   Age Group: ERROR parsing age")
+            
+            # Religion
+            raw_rel = voter_data.get('religion', '')
+            s_rel = str(raw_rel).strip().upper()
+            if "HINDU" in s_rel:
+                rel_tok = "Religion_Hindu"
+            elif "MUSLIM" in s_rel:
+                rel_tok = "Religion_Muslim"
+            elif "SIKH" in s_rel:
+                rel_tok = "Religion_Sikh"
+            else:
+                rel_tok = None
+            print(f"   Religion Token: {rel_tok}")
+            
+            # Caste
+            raw_caste = voter_data.get('caste', '')
+            s_caste = str(raw_caste).strip().upper()
+            is_hindu = "HINDU" in s_rel
+            
+            if not s_caste or s_caste in {"NA", "N/A", "NONE", "NULL", "UNKNOWN"}:
+                if not is_hindu:
+                    caste_tok = "Caste_No_caste_system"
+                else:
+                    caste_tok = None  # Hindu with unknown caste
+            elif "VAISHYA" in s_caste:
+                caste_tok = "Caste_Vaishya"
+            elif "BRAHMIN" in s_caste:
+                caste_tok = "Caste_Brahmin"
+            elif s_caste == "OBC":
+                caste_tok = "Caste_Obc"
+            elif s_caste == "SC":
+                caste_tok = "Caste_Sc"
+            else:
+                caste_tok = None if is_hindu else "Caste_No_caste_system"
+            print(f"   Caste Token: {caste_tok}")
+            
+            # Economic
+            econ_raw = voter_data.get('economic_category', '')
+            print(f"   Economic (raw): {econ_raw}")
+            print(f"   Economic (will map to full text)")
+            
+            # Locality
+            loc_raw = get_any(voter_data, 'Locality', 'locality', default=None)
+            locality_upper = str(loc_raw).strip().upper() if loc_raw else None
+            print(f"   Locality Token: {locality_upper}")
+            
+            # Check if vectorizer knows these features
+            print(f"\n✅ CHECKING IF VECTORIZER KNOWS THESE FEATURES:")
+            test_dict = {}
+            if age_group:
+                test_dict["age"] = age_group
+            if s_rel:
+                test_dict["religion"] = s_rel
+            if caste_tok:
+                # Extract just the caste name without "Caste_" prefix
+                caste_name = caste_tok.replace("Caste_", "") if caste_tok else None
+                if caste_name:
+                    test_dict["caste"] = caste_name
+            if econ_raw:
+                test_dict["economic"] = econ_raw
+            if locality_upper:
+                test_dict["locality"] = locality_upper
+            
+            print(f"   Dict to be passed to vectorizer: {test_dict}")
+            
+            if self.vectorizer and hasattr(self.vectorizer, 'vocabulary_'):
+                print(f"   Checking vocabulary for expected features:")
+                for cat_name, cat_value in test_dict.items():
+                    # DictVectorizer creates keys like "locality=PUNJABI BAGH"
+                    vectorizer_key = f"{cat_name}={cat_value}"
+                    if vectorizer_key in self.vectorizer.vocabulary_:
+                        print(f"   ✓ '{vectorizer_key}' → index {self.vectorizer.vocabulary_[vectorizer_key]}")
+                    else:
+                        print(f"   ✗ '{vectorizer_key}' NOT FOUND in vocabulary")
             
             # Call parent class's vectorized prediction
+            print(f"\n🔬 CALLING PREPROCESSING...")
             results = self.predict_voters_vectorized([voter_data])
             
             if not results or len(results) == 0:
@@ -637,7 +982,14 @@ class VoterPredictor(App1VoterPredictor):
             else:
                 confidence = 0.0
             
-            print(f"🎯 Predicted: {predicted_party} with {confidence*100:.1f}% confidence")
+            print(f"\n🎯 PREDICTION RESULTS:")
+            print(f"   Predicted Party: {predicted_party}")
+            print(f"   Confidence: {confidence*100:.1f}%")
+            print(f"   Party Probabilities:")
+            for party, prob in sorted(party_probs.items(), key=lambda x: x[1], reverse=True):
+                print(f"      {party}: {prob*100:.2f}%")
+            print(f"   Turnout Probability: {turnout_prob*100:.1f}%")
+            print(f"{'='*80}\n")
             
             # Determine confidence level
             if confidence > 0.7:
@@ -718,8 +1070,20 @@ uploaded_mapped_data = []
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint with detailed model status"""
+    """Health check endpoint with detailed model status and data availability"""
     global uploaded_raw_data, uploaded_mapped_data
+    
+    # Check for available data files
+    excel_path = os.path.join(os.path.dirname(__file__), 'NewDelhi_Parliamentary_Data.xlsx')
+    has_excel = os.path.exists(excel_path)
+    
+    # Check for prediction CSV files
+    csv_files = {
+        'new_delhi': os.path.exists('predictions_new_delhi.csv'),
+        'r_k_puram': os.path.exists('predictions_r_k_puram.csv'),
+        'newdelhi_voter': os.path.exists('newdelhi_voter_predictions.csv')
+    }
+    
     return jsonify({
         'status': 'healthy',
         'model_loaded': predictor.model_loaded,
@@ -736,9 +1100,60 @@ def health_check():
         'data_status': {
             'uploaded_voters_count': len(uploaded_mapped_data),
             'has_raw_data': len(uploaded_raw_data) > 0,
-            'sample_voter_ids': [v.get('voter_id', 'NO_ID') for v in uploaded_mapped_data[:5]] if uploaded_mapped_data else []
+            'sample_voter_ids': [v.get('voter_id', 'NO_ID') for v in uploaded_mapped_data[:5]] if uploaded_mapped_data else [],
+            'excel_available': has_excel,
+            'csv_files_available': csv_files,
+            'csv_count': sum(csv_files.values())
+        },
+        'setup_notes': {
+            'ready_to_use': sum(csv_files.values()) > 0,
+            'excel_note': 'Excel file available for advanced features' if has_excel else 'Excel file not found - some endpoints will return 404 (dashboard still works)',
+            'csv_note': f'{sum(csv_files.values())}/3 prediction CSV files found',
+            'model_note': 'ML model loaded' if predictor.model_loaded else 'No ML model loaded - upload via /api/upload-model or predictions from CSV will be used'
         }
     })
+
+@app.route('/api/model-features', methods=['GET'])
+def model_features_debug():
+    """Debug endpoint to inspect model's learned features"""
+    try:
+        if not predictor.model_loaded:
+            return jsonify({'error': 'Model not loaded'}), 400
+        
+        # Get vectorizer feature names
+        vec_features = []
+        if predictor.vectorizer:
+            if hasattr(predictor.vectorizer, 'feature_names_'):
+                vec_features = list(predictor.vectorizer.feature_names_)
+            elif hasattr(predictor.vectorizer, 'get_feature_names_out'):
+                vec_features = list(predictor.vectorizer.get_feature_names_out())
+        
+        # Extract locality-related features
+        locality_features = [f for f in vec_features if 'locality' in f.lower()]
+        age_features = [f for f in vec_features if 'age' in f.lower()]
+        religion_features = [f for f in vec_features if 'religion' in f.lower()]
+        caste_features = [f for f in vec_features if 'caste' in f.lower()]
+        economic_features = [f for f in vec_features if 'economic' in f.lower() or 'income' in f.lower()]
+        
+        return jsonify({
+            'total_features': len(predictor.feature_names),
+            'vectorizer_features': len(vec_features),
+            'feature_breakdown': {
+                'locality_count': len(locality_features),
+                'age_count': len(age_features),
+                'religion_count': len(religion_features),
+                'caste_count': len(caste_features),
+                'economic_count': len(economic_features)
+            },
+            'locality_features': locality_features[:30],  # First 30
+            'age_features': age_features,
+            'religion_features': religion_features,
+            'caste_features': caste_features,
+            'economic_features': economic_features,
+            'numeric_features': ['land_rate', 'construction_cost', 'population', 'male_female_ratio']
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/upload-voter-data', methods=['POST'])
 def upload_voter_data():
@@ -902,17 +1317,23 @@ def upload_voter_data():
                         col_norm = str(col).lower().strip()
                         if col_norm == target_norm:
                             val = get_cell(col)
-                            if val is None or val == '':
-                                return default
-                            sval = str(val).strip()
-                            return sval if sval != '' else default
+                            if val is not None and val != '':
+                                sval = str(val).strip()
+                                if sval != '' and sval.lower() != 'nan':
+                                    return sval
+                            # Column exists but value is empty, continue searching other possible names
+                            break
+                # Try partial matches if no exact match found
+                for name in possible_names:
+                    target_norm = str(name).lower().strip()
+                    for col in df.columns:
+                        col_norm = str(col).lower().strip()
                         if target_norm in col_norm:  # partial
                             val = get_cell(col)
-                            if val is None or val == '':
-                                continue
-                            sval = str(val).strip()
-                            if sval != '':
-                                return sval
+                            if val is not None and val != '':
+                                sval = str(val).strip()
+                                if sval != '' and sval.lower() != 'nan':
+                                    return sval
                 return default
 
             # Determine voter id for this row
@@ -963,22 +1384,29 @@ def upload_voter_data():
                 print(f"🧪 Candidate voter id columns scored: {voter_id_candidates[:8]}")
                 id_debug_done = True
 
-            # Normalize economic category to full label for display/prediction factors
-            econ_canon_map = {
-                '1': 'LOW INCOME AREAS', 'LOW': 'LOW INCOME AREAS', 'L': 'LOW INCOME AREAS',
+            # ✅ Use economic_category_code to derive correct economic_category (Excel economic_category column has wrong data)
+            # Code mapping: H=LOW INCOME, C=PREMIUM, etc.
+            econ_code_map = {
+                'H': 'LOW INCOME AREAS',
+                'C': 'PREMIUM AREAS',
+                '1': 'LOW INCOME AREAS', 'L': 'LOW INCOME AREAS',
                 '2': 'LOWER MIDDLE CLASS', 'LM': 'LOWER MIDDLE CLASS',
-                '3': 'MIDDLE CLASS', 'M': 'MIDDLE CLASS', 'MID': 'MIDDLE CLASS', 'E': 'MIDDLE CLASS',
-                '4': 'UPPER MIDDLE CLASS', 'UM': 'UPPER MIDDLE CLASS', 'UPPER': 'UPPER MIDDLE CLASS',
-                '5': 'PREMIUM AREAS', 'P': 'PREMIUM AREAS', 'PREMIUM': 'PREMIUM AREAS', 'HIGH': 'PREMIUM AREAS', 'H': 'PREMIUM AREAS'
+                '3': 'MIDDLE CLASS', 'M': 'MIDDLE CLASS',
+                '4': 'UPPER MIDDLE CLASS', 'UM': 'UPPER MIDDLE CLASS',
+                '5': 'PREMIUM AREAS', 'P': 'PREMIUM AREAS'
             }
-
-            raw_econ = find_value(['economic_category', 'Economic Category', 'economic status', 'Economic Status', 'economic_status', 'income_level', 'class', 'Class'])
-            econ_val = (raw_econ or 'MIDDLE CLASS').strip()
-            econ_key = econ_val.upper().strip()
-            econ_full = econ_canon_map.get(econ_key, econ_key)
-            # If econ_full still looks like a short code, fallback to MIDDLE CLASS
-            if len(econ_full) <= 3 and econ_full in econ_canon_map:
-                econ_full = econ_canon_map[econ_full]
+            
+            econ_code = find_value(['economic_category_code', 'econ_code', 'eco_code']) or ''
+            raw_econ_text = find_value(['economic_category', 'Economic Category']) or ''
+            
+            # Derive from code (source of truth), fallback to text if no code
+            if econ_code and econ_code.strip().upper() in econ_code_map:
+                econ_full = econ_code_map[econ_code.strip().upper()]
+            else:
+                econ_full = (raw_econ_text or 'MIDDLE CLASS').strip().upper()
+                valid_econ_categories = ['LOW INCOME AREAS', 'LOWER MIDDLE CLASS', 'MIDDLE CLASS', 'UPPER MIDDLE CLASS', 'PREMIUM AREAS']
+                if econ_full not in valid_econ_categories:
+                    econ_full = 'MIDDLE CLASS'
 
             mapped_voter = {
                 'voter_id': actual_voter_id,
@@ -988,11 +1416,11 @@ def upload_voter_data():
                 'religion': (find_value(['religion', 'Religion']) or 'HINDU').upper(),
                 'caste': (find_value(['caste', 'Caste', 'Category', 'category', 'Social Category', 'social_category']) or 'GENERAL').upper(),
                 'economic_category': econ_full,
-                'economic_category_code': find_value(['economic_category_code', 'econ_code', 'eco_code']) or econ_key,
-                'locality': find_value(['Locality', 'locality', 'Area', 'area', 'Location']) or 'Unknown',
+                'economic_category_code': econ_code,
+                'locality': (find_value(['Locality']) or 'Unknown').upper(),  # Use Locality column directly
                 'assembly': find_value(['assembly name', 'assembly', 'Assembly', 'Constituency', 'AC', 'assembly_constituency', 'ac_name']) or 'Unknown',
-                'section_road': find_value(['section no & road name']) or 'Unknown',
-                'full_address': find_value(['full_address', 'full address', 'Full Address', 'complete_address', 'Complete Address', 'residential_address', 'Residential Address', 'address', 'Address']) or 'Unknown',
+                'section_road': find_value(['section no & road name', 'section_road']) or 'Unknown',
+                'full_address': find_value(['full address', 'full_address', 'Full Address', 'Full_Address', 'complete_address', 'Complete Address', 'residential_address', 'Residential Address', 'address', 'Address']) or 'Unknown',
                 'partno': safe_int(find_value(['partno', 'part_no']), i+1),
                 'booth_no': safe_int(find_value(['partno', 'part_no', 'booth_no']), i+1),
                 'land_rate_per_sqm': safe_float(find_value(['land_rate_per_sqm', 'land_rate']), 0.0),
@@ -1165,7 +1593,7 @@ def predict_voter():
         mapped_voter = normalize_voter_payload_for_model(voter_data_raw, row_index_fallback=1)
         
         print(f"\n📋 NORMALIZED VOTER DATA (MAPPED FOR MODEL):")
-        print(f"   {json.dumps(mapped_voter, indent=2)}")
+        print(f"   {json.dumps(mapped_voter, indent=2, default=str)}")
         print(f"\n📋 Key field extraction (from mapped voter):")
         print(f"   Voter ID: {mapped_voter.get('voter_id', 'N/A')}")
         print(f"   Name: {mapped_voter.get('name', 'N/A')}")
@@ -1175,11 +1603,12 @@ def predict_voter():
         print(f"   Caste: {mapped_voter.get('caste', 'N/A')}")
         print(f"   Economic Category: {mapped_voter.get('economic_category', 'N/A')}")
         print(f"   Economic Code: {mapped_voter.get('economic_category_code', 'N/A')}")
-        print(f"   Locality: {mapped_voter.get('locality', 'N/A')} ⚠️ CRITICAL FIELD")
+        print(f"   Locality: {mapped_voter.get('Locality', 'N/A')} ⚠️ CRITICAL FIELD (capital L)")
+        print(f"   locality (lower): {mapped_voter.get('locality', 'N/A')}")
         print(f"   Land Rate: {mapped_voter.get('land_rate_per_sqm', 'N/A')}")
         print(f"   Construction Cost: {mapped_voter.get('construction_cost_per_sqm', 'N/A')}")
         print(f"   Population: {mapped_voter.get('population', 'N/A')}")
-        print(f"   Male/Female Ratio: {mapped_voter.get('male_female_ratio', 'N/A')}")
+        print(f"   MaleToFemaleRatio: {mapped_voter.get('MaleToFemaleRatio', 'N/A')} ⚠️ CRITICAL FIELD")
         print(f"   Booth / Part No: {mapped_voter.get('booth_no', 'N/A')} / {mapped_voter.get('partno', 'N/A')}")
         
         # Make prediction using normalized voter object
@@ -2214,10 +2643,56 @@ def get_individual_voter_prediction(voter_id):
         return jsonify({'error': f'Failed to load voter prediction: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    print("🚀 Starting ML Model API Server...")
-    print("📊 Upload your PKL model to /api/upload-model")
-    print("🔮 Make predictions at /api/predict")
-    print("👨‍👩‍👧‍👦 Family predictions at /api/predict-family")
+    print("\n" + "="*60)
+    print("🚀 Starting Election Dashboard API Server")
+    print("="*60)
+    
+    # Check data files availability
+    print("\n📁 Data Files Status:")
+    excel_path = os.path.join(os.path.dirname(__file__), 'NewDelhi_Parliamentary_Data.xlsx')
+    if os.path.exists(excel_path):
+        print("   ✅ Excel file found: NewDelhi_Parliamentary_Data.xlsx")
+    else:
+        print("   ⚠️  Excel file not found (optional - dashboard will work without it)")
+    
+    csv_files = [
+        'predictions_new_delhi.csv',
+        'predictions_r_k_puram.csv', 
+        'newdelhi_voter_predictions.csv'
+    ]
+    csv_found = 0
+    for csv_file in csv_files:
+        if os.path.exists(csv_file):
+            print(f"   ✅ CSV file found: {csv_file}")
+            csv_found += 1
+        else:
+            print(f"   ❌ CSV file missing: {csv_file}")
+    
+    print(f"\n📊 {csv_found}/{len(csv_files)} prediction CSV files available")
+    
+    if csv_found == 0:
+        print("\n⚠️  WARNING: No prediction CSV files found!")
+        print("   Some API endpoints may not work properly.")
+        print("   See SETUP_GUIDE.md for setup instructions.")
+    else:
+        print("\n✅ Dashboard is ready to use!")
+    
+    print("\n🔗 API Endpoints:")
+    print("   Health Check: GET  /api/health")
+    print("   Upload Model: POST /api/upload-model")
+    print("   Predict:      POST /api/predict")
+    print("   Family Pred:  POST /api/predict-family")
+    print("   Voter Search: POST /api/search-voter")
+    
+    print("\n📖 Documentation:")
+    print("   Setup Guide: SETUP_GUIDE.md")
+    print("   Data Info:   DATA_FILES_INFO.md")
+    print("   GitHub:      https://github.com/flokush1/Election-Dashboard")
+    
+    print("\n" + "="*60)
+    print("Server starting on http://localhost:5000")
+    print("="*60 + "\n")
+    
     # Debug mode disabled to prevent auto-restart on file changes
     # Set debug=True if you want auto-reload during development
     app.run(debug=False, host='0.0.0.0', port=5000)

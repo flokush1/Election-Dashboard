@@ -34,14 +34,18 @@ ENV/
 .DS_Store
 
 # Large data files
+# Excel files are too large for git and may contain sensitive voter data
 *.xlsx
 *.xls
-*.csv
+*.zip
+# Exception: Include these specific prediction CSV files (small, no sensitive data)
 !predictions_r_k_puram.csv
 !predictions_new_delhi.csv
 !newdelhi_voter_predictions.csv
+# Note: CSV predictions ARE included in the repo for easy setup
 
 # Model files (too large for git)
+# Train models locally or download separately
 *.pkl
 *.pth
 *.h5
@@ -69,3 +73,5 @@ Thumbs.db
 
 # Build artifacts
 *.pyc
+
+VoterID_Data_Assembly.zip

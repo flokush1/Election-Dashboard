@@ -911,6 +911,26 @@ const BoothDetailMap = ({
         <div class="content">
             <!-- Building Info -->
             <div class="info-grid">
+                ${props['plot_no.'] ? `
+                <div class="info-item">
+                    <div class="info-label">Plot Number</div>
+                    <div class="info-value">${props['plot_no.']}</div>
+                </div>` : ''}
+                ${props['booth_no.'] ? `
+                <div class="info-item">
+                    <div class="info-label">Booth Number</div>
+                    <div class="info-value">${props['booth_no.']}</div>
+                </div>` : ''}
+                ${props.block_no ? `
+                <div class="info-item">
+                    <div class="info-label">Block</div>
+                    <div class="info-value">${props.block_no}</div>
+                </div>` : ''}
+                ${props.loacalityn ? `
+                <div class="info-item">
+                    <div class="info-label">Locality</div>
+                    <div class="info-value">${props.loacalityn}</div>
+                </div>` : ''}
                 ${props.Parcel_No ? `
                 <div class="info-item">
                     <div class="info-label">Parcel ID</div>
@@ -932,7 +952,7 @@ const BoothDetailMap = ({
                     <div class="info-value">${props.voter_count}</div>
                 </div>` : ''}
                 <div class="info-item">
-                    <div class="info-label">Area</div>
+                    <div class="info-label">Plot Area</div>
                     <div class="info-value">${area.toFixed(0)} sq m</div>
                 </div>
                 ${props.avg_turnout_prob ? `
@@ -941,6 +961,46 @@ const BoothDetailMap = ({
                     <div class="info-value">${(props.avg_turnout_prob * 100).toFixed(1)}%</div>
                 </div>` : ''}
             </div>
+            
+            <!-- Plot Prediction Summary -->
+            ${props.predicted_winner ? `
+            <div class="section">
+                <h2>📊 Plot-Level Prediction</h2>
+                <div class="detail-grid">
+                    <div class="detail-card" style="border-left-color: ${getPartyColor(props.predicted_winner)};">
+                        <div class="detail-label">Predicted Winner</div>
+                        <div class="detail-value" style="color: ${getPartyColor(props.predicted_winner)};">
+                            ${props.predicted_winner}
+                        </div>
+                    </div>
+                    ${props.winner_probability ? `
+                    <div class="detail-card">
+                        <div class="detail-label">Win Probability</div>
+                        <div class="detail-value">${(props.winner_probability * 100).toFixed(1)}%</div>
+                    </div>` : ''}
+                    ${props.avg_prob_BJP ? `
+                    <div class="detail-card" style="border-left-color: ${getPartyColor('BJP')};">
+                        <div class="detail-label">BJP Likelihood</div>
+                        <div class="detail-value" style="color: ${getPartyColor('BJP')};">
+                            ${(props.avg_prob_BJP * 100).toFixed(1)}%
+                        </div>
+                    </div>` : ''}
+                    ${props.avg_prob_Congress ? `
+                    <div class="detail-card" style="border-left-color: ${getPartyColor('Congress')};">
+                        <div class="detail-label">Congress Likelihood</div>
+                        <div class="detail-value" style="color: ${getPartyColor('Congress')};">
+                            ${(props.avg_prob_Congress * 100).toFixed(1)}%
+                        </div>
+                    </div>` : ''}
+                    ${props.avg_prob_AAP ? `
+                    <div class="detail-card" style="border-left-color: ${getPartyColor('AAP')};">
+                        <div class="detail-label">AAP Likelihood</div>
+                        <div class="detail-value" style="color: ${getPartyColor('AAP')};">
+                            ${(props.avg_prob_AAP * 100).toFixed(1)}%
+                        </div>
+                    </div>` : ''}
+                </div>
+            </div>` : ''}
             
             <!-- Voters List with Expandable Details -->
             ${props.voters && props.voters.length > 0 ? `

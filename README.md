@@ -1,5 +1,7 @@
 # Delhi Election Dashboard 🗳️
 
+> **✅ Ready to Clone & Use!** This repository includes all necessary prediction data (CSV) and geospatial files (GeoJSON). Clone, install dependencies, and start exploring the dashboard immediately. Optional Excel files and ML models can be added later for advanced features.
+
 A comprehensive full-stack electoral analysis platform for the New Delhi Parliamentary constituency, featuring machine learning-powered voter prediction, interactive geospatial visualization, and hierarchical data exploration across 4 administrative levels: Parliament → Assembly → Ward → Booth.
 
 ## 🎯 Overview
@@ -101,12 +103,18 @@ delhi-election-dashboard/
 
 ## 🚀 Setup Instructions
 
+### 📖 Quick Start Guide
+
+**For detailed setup instructions, see [SETUP_GUIDE.md](./SETUP_GUIDE.md)**
+
+**For data files information, see [DATA_FILES_INFO.md](./DATA_FILES_INFO.md)**
+
 ### Prerequisites
 - **Node.js** v16+ (for frontend)
 - **Python** 3.8+ (for ML backend)
 - **npm** or **yarn** (package manager)
 
-### Installation
+### Quick Installation
 
 1. **Clone the repository:**
    ```bash
@@ -121,10 +129,13 @@ delhi-election-dashboard/
 
 3. **Install Python dependencies:**
    ```bash
-   pip install flask flask-cors pandas numpy scikit-learn openpyxl werkzeug
+   # Recommended: Create virtual environment first
+   python -m venv .venv
+   .venv\Scripts\activate  # Windows
+   # source .venv/bin/activate  # macOS/Linux
    
-   # Optional: For PyTorch models
-   pip install torch
+   # Install from requirements file
+   pip install -r requirements.txt
    ```
 
 4. **Start the ML backend server:**
@@ -137,17 +148,20 @@ delhi-election-dashboard/
    ```bash
    npm run dev
    ```
-   The dashboard will open at `http://localhost:3000`
+   The dashboard will open at `http://localhost:5173`
 
-### Data Setup
+### Data Files
 
-The application expects data files in specific locations:
-- Place Excel voter data in `VoterID_Data_Assembly/` folder
-- Place GeoJSON boundary files in `public/data/` folder
-- Parliament data: `NewDelhi_Parliamentary_Data.xlsx`
-- Prediction CSVs: `predictions_*.csv`
+**✅ Included in repository:**
+- CSV prediction files (`predictions_*.csv`)
+- GeoJSON boundary files (`public/data/geospatial/`)
+- JSON data files (`public/data/`)
 
-Note: Large data files (`.xlsx`, `.pkl`) are gitignored. You'll need to obtain these separately.
+**❌ NOT included (optional for full features):**
+- Excel voter data: `NewDelhi_Parliamentary_Data.xlsx`
+- ML model files: `.pkl`, `.pth` files
+
+**The dashboard works without the optional files!** See [DATA_FILES_INFO.md](./DATA_FILES_INFO.md) for details.
 
 ## Dashboard Navigation
 

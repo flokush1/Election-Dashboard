@@ -97,25 +97,27 @@ const DemographicsChart = ({ data, type = 'age' }) => {
   // Use bar chart for economic data (booth counts), pie chart for others (percentages)
   if (type === 'economic') {
     return (
-      <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={chartData} margin={{ top: 10, right: 20, left: 40, bottom: 60 }}>
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 80 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis 
             dataKey="name" 
-            tick={{ fontSize: 9, fill: '#374151' }}
+            tick={{ fontSize: 10, fill: '#374151' }}
             axisLine={{ stroke: '#d1d5db' }}
             tickLine={{ stroke: '#d1d5db' }}
             angle={-45}
             textAnchor="end"
-            height={60}
+            height={70}
+            interval={0}
           />
           <YAxis 
-            tick={{ fontSize: 10, fill: '#374151' }}
+            tick={{ fontSize: 11, fill: '#374151' }}
             axisLine={{ stroke: '#d1d5db' }}
             tickLine={{ stroke: '#d1d5db' }}
+            width={40}
           />
           <Tooltip content={<CustomTooltip />} />
-          <Bar dataKey="value" fill="#3B82F6" radius={[2, 2, 0, 0]}>
+          <Bar dataKey="value" fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={60}>
             {chartData.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
             ))}

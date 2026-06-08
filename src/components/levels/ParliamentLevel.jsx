@@ -119,18 +119,18 @@ const ParliamentLevel = ({
       {/* Key Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
         <StatCard
-          title="Total Votes"
+          title="Total Votes Polled"
           value={formatNumber(data.totalVotes)}
           icon={Vote}
           color="blue"
           subtitle="Cast in constituency"
         />
         <StatCard
-          title="Total Population"
+          title="Total Registered Voters"
           value={formatNumber(data.demographics?.totalPopulation || data.totalPopulation)}
           icon={Users}
           color="indigo"
-          subtitle="Constituency population"
+          subtitle="Eligible voters"
         />
         <StatCard
           title="Assembly Constituencies"

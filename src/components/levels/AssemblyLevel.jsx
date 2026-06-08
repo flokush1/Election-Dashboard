@@ -167,14 +167,14 @@ const AssemblyLevel = ({
       {/* Key Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
-          title="Total Votes"
+          title="Total Votes Polled"
           value={formatNumber(data.totalVotes)}
           icon={Vote}
           color="blue"
           subtitle="Votes polled"
         />
         <StatCard
-          title="Total Population"
+          title="Total Registered Voters"
           value={formatNumber(data.totalPopulation)}
           icon={Users}
           color="green"
@@ -375,7 +375,6 @@ const AssemblyLevel = ({
             <DemographicsChart 
               data={data.economics.categories}
               type="economic"
-              height={180}
             />
           )}
         </div>
