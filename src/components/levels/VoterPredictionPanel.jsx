@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { User, Users, Vote, TrendingUp, MapPin, Home, ArrowLeft, Zap, Upload, FileText, Search, AlertCircle, CheckCircle, Calendar, BookOpen, DollarSign } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import StatCard from '../stats/StatCard.jsx';
 import { formatNumber, getPartyColor } from '../../shared/utils.js';
-import { testExcelParsing } from '../../utils/debug-excel.js';
+import { useModelApi } from '../../features/predictions/hooks/useModelApi.js';
+import { downloadRows } from '../../features/predictions/lib/download.js';
 
 const VoterPredictionPanel = ({ 
   onNavigateBack, 
@@ -22,9 +22,7 @@ const VoterPredictionPanel = ({
   const [modelFile, setModelFile] = useState(null);
   const [voterDataFile, setVoterDataFile] = useState(null);
   const [voterData, setVoterData] = useState([]);
-  // Raw (original) voter data as read from Excel before normalization/mapping
   const [rawVoterData, setRawVoterData] = useState([]);
-  const [modelStatus, setModelStatus] = useState(null);
   const [realPredictions, setRealPredictions] = useState(null);
   const [familyPredictions, setFamilyPredictions] = useState(null);
   const [searchVoterId, setSearchVoterId] = useState('');
@@ -32,7 +30,11 @@ const VoterPredictionPanel = ({
   const [uploadErrors, setUploadErrors] = useState({});
   const [uploadProgress, setUploadProgress] = useState({ stage: '', percent: 0 });
   const [sampleVoterIds, setSampleVoterIds] = useState([]);
-  const [apiStatus, setApiStatus] = useState('checking'); // 'checking', 'connected', 'error'
+  const {
+    apiStatus,
+    modelStatus,
+    setModelStatus
+  } = useModelApi();
   // Data preview / download states
   const [showDataPreview, setShowDataPreview] = useState(false);
   const [dataFilter, setDataFilter] = useState('');
@@ -90,86 +92,19 @@ const VoterPredictionPanel = ({
   }, [allColumns, previewColumnsLimit]);
 
   const downloadCSV = (onlyFiltered=false) => {
-    const baseRows = previewDataRows;
-    const rows = onlyFiltered ? filteredPreviewData : baseRows;
-    if (!rows.length) return;
-    const cols = (rawColumns && rawColumns.length)
-      ? rawColumns
-      : Array.from(new Set(rows.flatMap(r => Object.keys(r))));
-    const esc = (val) => {
-      if (val === null || val === undefined) return '';
-      const s = String(val).replace(/"/g,'""');
-      return /[",\n]/.test(s) ? `"${s}"` : s;
-    };
-    const lines = [cols.join(',')];
-    for (const r of rows) {
-      lines.push(cols.map(c => esc(r[c])).join(','));
-    }
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `voter_data${onlyFiltered? '_filtered':''}_${rows.length}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const rows = onlyFiltered ? filteredPreviewData : previewDataRows;
+    const cols = (rawColumns && rawColumns.length) ? rawColumns : Array.from(new Set(rows.flatMap(r => Object.keys(r))));
+    downloadRows(rows, cols, `voter_data${onlyFiltered? '_filtered':''}_${rows.length}.csv`, 'csv');
   };
 
   const downloadJSON = (onlyFiltered=false) => {
-    const baseRows = previewDataRows;
-    const rows = onlyFiltered ? filteredPreviewData : baseRows;
-    const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `voter_data${onlyFiltered? '_filtered':''}_${rows.length}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const rows = onlyFiltered ? filteredPreviewData : previewDataRows;
+    downloadRows(rows, rawColumns, `voter_data${onlyFiltered? '_filtered':''}_${rows.length}.json`, 'json');
   };
 
-  // Check API health on component mount
-  useEffect(() => {
-    checkApiHealth();
-  }, []);
+  // Check API health on component mount is handled by useModelApi
 
-  const apiBase = () => {
-    // If running through Vite proxy, relative will work. Fallback to localhost:5000 if served from file or different port without proxy.
-    if (window?.location?.hostname && window.location.port === '3000') return '';
-    return '';
-  };
-
-  const apiFetch = (path, options) => fetch(`${apiBase()}${path}`, options);
-
-  const checkApiHealth = async () => {
-    try {
-  const response = await apiFetch('/api/health');
-      if (response.ok) {
-        setApiStatus('connected');
-        
-        // Check if model is already loaded and restore status
-        const data = await response.json();
-        if (data.model_loaded) {
-          setModelStatus({
-            loaded: true,
-            fileName: data.model_file || 'Unknown Model',
-            fileSize: 'Already Loaded',
-            modelType: 'VoterPredictor',
-            features: data.feature_count,
-            parties: ['BJP', 'Congress', 'AAP', 'Others', 'NOTA']
-          });
-          console.log('✅ Model status restored from API');
-        }
-      } else {
-        setApiStatus('error');
-      }
-    } catch (error) {
-      setApiStatus('error');
-      console.error('API health check failed:', error);
-    }
-  };
+  const apiFetch = (path, options) => fetch(path, options);
 
   useEffect(() => {
     // Load sample voters data only in sample mode
@@ -472,6 +407,9 @@ const VoterPredictionPanel = ({
         console.log('File read successfully, parsing...');
         setUploadProgress({ stage: 'Parsing Excel structure...', percent: 20 });
         
+        // Load the large spreadsheet parser only when a file is actually uploaded.
+        const XLSX = await import('xlsx');
+
         // Parse with optimized settings for large files
         const workbook = XLSX.read(arrayBuffer, { 
           type: 'array',

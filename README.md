@@ -1,6 +1,12 @@
-# Delhi Election Dashboard 🗳️
+# Delhi Election Dashboard
 
-> **✅ Ready to Clone & Use!** This repository includes all necessary prediction data (CSV) and geospatial files (GeoJSON). Clone, install dependencies, and start exploring the dashboard immediately. Optional Excel files and ML models can be added later for advanced features.
+A full-stack electoral analysis platform for the New Delhi Parliamentary constituency.
+
+**Private voter-level CSVs, Excel rolls, and ML models stay out of Git.** Put them in `data/private` or keep them at the repo root for local compatibility. See `docs/DATA_LIFECYCLE.md`.
+
+Quick start: see **[COMMANDS.md](COMMANDS.md)** for install, run, and usage steps.
+
+Short version: `npm install && npm run dev` plus `python model_api.py`. Details also in `docs/SETUP.md`.
 
 A comprehensive full-stack electoral analysis platform for the New Delhi Parliamentary constituency, featuring machine learning-powered voter prediction, interactive geospatial visualization, and hierarchical data exploration across 4 administrative levels: Parliament → Assembly → Ward → Booth.
 

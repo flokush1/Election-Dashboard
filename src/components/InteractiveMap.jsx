@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { MapContainer, TileLayer, GeoJSON, Popup, Tooltip } from 'react-leaflet';
 import { motion } from 'framer-motion';
 import { getPartyColor, canonicalWardKey, normalizeWardDisplay } from '../shared/utils.js';
@@ -23,33 +23,26 @@ const InteractiveMap = ({
     }
   };
 
-  // Helper: find electoral info by robustly matching names (direct, display-normalized, canonical key)
+  const electoralIndex = useMemo(() => {
+    if (!electoralData || Array.isArray(electoralData)) return null;
+    const index = new Map();
+    Object.entries(electoralData).forEach(([key, info]) => {
+      index.set(key, { key, info });
+      index.set(normalizeWardDisplay(key), { key, info });
+      index.set(canonicalWardKey(key), { key, info });
+    });
+    return index;
+  }, [electoralData]);
+
+  // Helper: find electoral info using a precomputed name index.
   const findElectoralInfo = (name, dataObj) => {
     if (!name || !dataObj) return { key: null, info: null };
-    // 1) direct
-    if (dataObj[name]) return { key: name, info: dataObj[name] };
-    // 2) title/display normalized
-    const disp = normalizeWardDisplay(name);
-    if (dataObj[disp]) return { key: disp, info: dataObj[disp] };
-    // 3) canonical key match
-    const targetKey = canonicalWardKey(name);
-    let matchKey = null;
-    for (const k of Object.keys(dataObj)) {
-      if (canonicalWardKey(k) === targetKey) { matchKey = k; break; }
-    }
-    return matchKey ? { key: matchKey, info: dataObj[matchKey] } : { key: null, info: null };
+    return electoralIndex?.get(name)
+      || electoralIndex?.get(normalizeWardDisplay(name))
+      || electoralIndex?.get(canonicalWardKey(name))
+      || { key: null, info: null };
   };
 
-  // Debug logging - log once when component mounts
-  if (geoData && geoData.features && electoralData) {
-    console.log('InteractiveMap debug info:', {
-      geoDataFeatures: geoData.features.length,
-      electoralDataKeys: Object.keys(electoralData).slice(0, 5),
-      level,
-      sampleGeoNames: geoData.features.slice(0, 3).map(f => getFeatureName(f, level)),
-      sampleElectoralKeys: Object.keys(electoralData).slice(0, 3)
-    });
-  }
   const getFeatureStyle = (feature) => {
     const featureName = getFeatureName(feature, level);
     
@@ -60,11 +53,9 @@ const InteractiveMap = ({
     if (electoralData && featureName) {
       // Try to find electoral data for this feature
       let electoralInfo = null;
-      let matchedKey = null;
-      
       if (level === 'assembly') {
         const res = findElectoralInfo(featureName, electoralData);
-        matchedKey = res.key; electoralInfo = res.info;
+        electoralInfo = res.info;
       } else if (level === 'booth') {
         // For booth level, electoralData is an array of booth objects
         if (Array.isArray(electoralData)) {
@@ -78,11 +69,7 @@ const InteractiveMap = ({
         }
       } else if (level === 'ward') {
         const res = findElectoralInfo(featureName, electoralData);
-        matchedKey = res.key; electoralInfo = res.info;
-        console.log(`🏘️ Ward lookup: "${featureName}" -> "${matchedKey || '(no match)'}"`);
-        if (!electoralInfo) {
-          console.log(`✗ No match. Sample keys:`, Object.keys(electoralData).slice(0, 8));
-        }
+        electoralInfo = res.info;
       } else {
         // For other levels, try direct lookup
         electoralInfo = electoralData[featureName];
@@ -139,11 +126,7 @@ const InteractiveMap = ({
         const layer = e.target;
         layer.setStyle(getFeatureStyle(feature));
       },
-      click: (e) => {
-        console.log('Map clicked - Feature Name:', featureName);
-        console.log('Map Level:', level);
-        console.log('onItemClick function:', typeof onItemClick);
-        
+      click: () => {
         if (onItemClick) {
           let nameForNavigation = featureName;
           
@@ -156,11 +139,7 @@ const InteractiveMap = ({
             nameForNavigation = featureName;
           }
           
-          console.log('Original name:', featureName);
-          console.log('Converted name for navigation:', nameForNavigation);
           onItemClick(nameForNavigation);
-        } else {
-          console.log('No onItemClick handler provided');
         }
       }
     });
@@ -264,10 +243,11 @@ const InteractiveMap = ({
     
     layer.bindPopup(popupContent);
     
-    // Add permanent tooltip to show assembly name
+    // Create labels only while the user is interacting with a feature.
     layer.bindTooltip(featureName, {
-      permanent: true,
-      direction: 'center',
+      permanent: false,
+      sticky: true,
+      direction: 'top',
       className: 'assembly-label',
       opacity: 0.9
     });
@@ -386,7 +366,7 @@ const InteractiveMap = ({
           data={geoData}
           style={getFeatureStyle}
           onEachFeature={onEachFeature}
-          key={`${level}-${selectedItem}`}
+          key={level}
         />
       </MapContainer>
       <MapLegend />

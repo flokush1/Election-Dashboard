@@ -1,5 +1,6 @@
 // Booth coordinate mappings for New Delhi constituency
 // Based on the GeoJSON data provided
+import { getBoothAssets } from '../features/maps/config/boothAssets.js';
 
 export const BOOTH_COORDINATES = {
   "NEW DELHI": {
@@ -70,23 +71,9 @@ export const getBoothMetadata = (assemblyConstituency, boothNumber) => {
 
 // Function to check if detailed geospatial data is available for a booth
 export const hasDetailedBoothData = (assemblyConstituency, boothNumber) => {
-  console.log('hasDetailedBoothData check:', assemblyConstituency, boothNumber);
-  
-  // Currently detailed data available for:
-  // - NEW DELHI Booth 1 (ST THOMAS SCHOOL - MANDIR MARG)
-  // - R K PURAM Booth 17 (Shanti Niketan plots inside RK Puram booth boundary)
-  // Handle mixed casing in assembly names
   const normalizedAssembly = assemblyConstituency?.toUpperCase().trim();
   const boothStr = boothNumber?.toString();
-
-  const result = (
-    (normalizedAssembly === "NEW DELHI" && boothStr === "1") ||
-    (normalizedAssembly === "NEW DELHI" && boothStr === "103") ||
-    (normalizedAssembly === "R K PURAM" && boothStr === "17")
-  );
-
-  console.log('hasDetailedBoothData result:', result, 'normalized assembly:', normalizedAssembly);
-  return result;
+  return Boolean(getBoothAssets(normalizedAssembly, boothStr));
 };
 
 // Assembly constituency center coordinates

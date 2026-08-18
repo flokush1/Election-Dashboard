@@ -1,0 +1,24 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    environment:
+      FLASK_ENV: production
+      FRONTEND_URL: http://localhost
+      CORS_ORIGINS: http://localhost
+      PRIVATE_DATA_DIR: /data/private
+      PREDICTIONS_DIR: /data/private/predictions
+    volumes:
+      - ../data/private:/data/private:ro
+    ports:
+      - "5000:5000"
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - api

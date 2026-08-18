@@ -27,6 +27,8 @@ import BoothDetailMap from '../BoothDetailMap';
 import VoterPredictionCard from '../VoterPredictionCard.jsx';
 import { formatNumber, getPartyColor } from '../../shared/utils.js';
 import { getBoothCoordinates } from '../../shared/coordinates.js';
+import { allocateBoothVotes } from '../../features/booth/voteAllocation.js';
+import { useBoothPredictions, useBoothStats } from '../../features/booth/hooks/useBoothData.js';
 
 const BoothLevel = ({ 
   data, 
@@ -39,17 +41,15 @@ const BoothLevel = ({
 }) => {
   const [selectedBuilding, setSelectedBuilding] = useState(null);
   const [buildingAnalytics, setBuildingAnalytics] = useState(null);
-  
-  // New state for voter predictions
-  const [voterPredictions, setVoterPredictions] = useState(null);
-  const [loadingPredictions, setLoadingPredictions] = useState(false);
-  const [selectedVoterId, setSelectedVoterId] = useState('');
-  const [selectedVoterPrediction, setSelectedVoterPrediction] = useState(null);
-  const [showIndividualPrediction, setShowIndividualPrediction] = useState(false);
-  
-  // New state for booth statistics from CSV
-  const [boothStatistics, setBoothStatistics] = useState(null);
-  const [loadingBoothStats, setLoadingBoothStats] = useState(false);
+  const { boothStatistics, loadingBoothStats } = useBoothStats(data?.AssemblyName, selectedBooth);
+  const {
+    voterPredictions,
+    loadingPredictions,
+    selectedVoterId,
+    selectedVoterPrediction,
+    showIndividualPrediction,
+    handleVoterIdChange
+  } = useBoothPredictions(data?.AssemblyName, selectedBooth);
 
   // Load building analytics when component mounts
   useEffect(() => {
@@ -72,138 +72,13 @@ const BoothLevel = ({
 
   const handleBuildingClick = (buildingInfo) => {
     setSelectedBuilding(buildingInfo);
-    console.log('Building selected:', buildingInfo);
   };
 
-  // Load booth statistics from Excel (preferred), fallback to CSV predictions
-  const loadBoothStatistics = async () => {
-    if (!data.AssemblyName || !selectedBooth) return;
-    
-    try {
-      setLoadingBoothStats(true);
-      // Prefer Excel stats if available (NewDelhi_Parliamentary_Data.xlsx)
-      const excelUrl = `/api/booth-excel-stats/${encodeURIComponent(data.AssemblyName)}/${selectedBooth}`;
-      const csvUrl = `/api/booth-statistics/${encodeURIComponent(data.AssemblyName)}/${selectedBooth}`;
-      console.log('🔍 Loading booth statistics (Excel preferred):', { assembly: data.AssemblyName, booth: selectedBooth, excelUrl, csvUrl });
-      
-      let response = await fetch(excelUrl);
-      let useCsvFallback = false;
-      if (!response.ok) {
-        useCsvFallback = true;
-        response = await fetch(csvUrl);
-      }
-      
-      if (response.ok) {
-        const result = await response.json();
-        // Normalize Excel response to existing shape when possible
-        const normalized = { ...result };
-        // If Excel returned party_probabilities but not predicted_winner/margin, derive minimal fields
-        if (!normalized.predicted_winner && normalized.party_probabilities) {
-          const entries = Object.entries(normalized.party_probabilities || {});
-          const top = entries.sort((a,b)=>b[1]-a[1])[0];
-          if (top) normalized.predicted_winner = top[0];
-          if (!normalized.expected_votes) normalized.expected_votes = normalized.party_probabilities;
-        }
-        setBoothStatistics(normalized);
-        console.log('✅ Loaded booth statistics:', { source: useCsvFallback ? 'CSV' : 'Excel', result: normalized });
-      } else {
-        console.error('❌ Failed to load booth statistics:', response.status);
-      }
-    } catch (error) {
-      console.error('❌ Error loading booth statistics:', error);
-    } finally {
-      setLoadingBoothStats(false);
-    }
-  };
-
-  // Load voter predictions for the selected booth
-  const loadVoterPredictions = async () => {
-    if (!data.AssemblyName || !selectedBooth) return;
-    
-    try {
-      setLoadingPredictions(true);
-      console.log('🔍 Loading voter predictions for:', {
-        assembly: data.AssemblyName,
-        booth: selectedBooth,
-        url: `/api/voter-predictions/${encodeURIComponent(data.AssemblyName)}/${selectedBooth}`
-      });
-      
-      const response = await fetch(`/api/voter-predictions/${encodeURIComponent(data.AssemblyName)}/${selectedBooth}`);
-      
-      if (response.ok) {
-        const result = await response.json();
-        setVoterPredictions(result);
-        console.log('✅ Loaded voter predictions:', {
-          totalVoters: result.total_voters,
-          assembly: result.assembly,
-          booth: result.booth,
-          sampleVoter: result.voters?.[0]
-        });
-      } else {
-        console.error('❌ Failed to load voter predictions:', response.status);
-      }
-    } catch (error) {
-      console.error('❌ Error loading voter predictions:', error);
-    } finally {
-      setLoadingPredictions(false);
-    }
-  };
-
-  // Load individual voter prediction
-  const loadIndividualVoterPrediction = async (voterId) => {
-    if (!voterId) return;
-    
-    try {
-      console.log('🔍 Loading individual voter prediction for:', voterId);
-      const response = await fetch(`/api/voter-prediction/${encodeURIComponent(voterId)}`);
-      
-      if (response.ok) {
-        const result = await response.json();
-        console.log('✅ Loaded individual voter prediction:', {
-          voterId: result.voter?.Voter_ID,
-          name: result.voter?.name,
-          assembly: result.voter?.assembly_name,
-          booth: result.voter?.Booth_ID
-        });
-        setSelectedVoterPrediction(result.voter);
-        setShowIndividualPrediction(true);
-      } else {
-        const errorData = await response.json();
-        console.error('❌ Failed to load individual voter prediction:', response.status, errorData);
-        alert(`Failed to load voter prediction: ${errorData.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('❌ Error loading individual voter prediction:', error);
-      alert('Error loading voter prediction. Please try again.');
-    }
-  };
-
-  // Load voter predictions when booth changes
-  useEffect(() => {
-    if (data?.AssemblyName && selectedBooth) {
-      loadVoterPredictions();
-      loadBoothStatistics();
-    }
-  }, [selectedBooth, data?.AssemblyName]);
-
-  // Handle voter ID selection
-  const handleVoterIdChange = (voterId) => {
-    setSelectedVoterId(voterId);
-    if (voterId) {
-      loadIndividualVoterPrediction(voterId);
-    } else {
-      setSelectedVoterPrediction(null);
-      setShowIndividualPrediction(false);
-    }
-  };
-
-  // Early return if no data
   if (!data) return null;
 
   // Winner (fallback to data.Winner if allocation not available yet)
   let winnerParty = data.Winner || 'Unknown';
   
-  // Precise party vote allocation using Largest Remainder so sum == Total_Polled
   const rawRatios = {
     BJP: data.BJP_Ratio || 0,
     AAP: data.AAP_Ratio || 0,
@@ -211,31 +86,10 @@ const BoothLevel = ({
     Others: data.Others_Ratio || 0,
     NOTA: data.NOTA_Ratio || 0
   };
-  const allocateVotes = (ratios, total) => {
-    const parties = Object.keys(ratios);
-    const exact = parties.map(p => ({ p, exact: (ratios[p] || 0) * total }));
-    const floorVotes = {}; let sumFloors = 0;
-    exact.forEach(e => { const f = Math.floor(e.exact); floorVotes[e.p] = f; sumFloors += f; });
-    let remaining = total - sumFloors;
-    exact.sort((a,b) => (b.exact - Math.floor(b.exact)) - (a.exact - Math.floor(a.exact)));
-    let i = 0; while (remaining > 0 && i < exact.length) { floorVotes[exact[i].p] += 1; remaining--; i++; }
-    return floorVotes;
-  };
-  const partyVotes = allocateVotes(rawRatios, data.Total_Polled || 0);
-  const totalAllocated = Object.values(partyVotes).reduce((s,v)=>s+v,0);
-  if ((data.Total_Polled || 0) !== totalAllocated) {
-    console.warn('Vote allocation adjustment', { expected: data.Total_Polled, allocated: totalAllocated });
-    const diff = (data.Total_Polled || 0) - totalAllocated;
-    if (diff !== 0) {
-      const maxParty = Object.entries(partyVotes).sort((a,b)=>b[1]-a[1])[0]?.[0];
-      if (maxParty) partyVotes[maxParty] += diff;
-    }
-  }
-  const orderedAllocated = Object.entries(partyVotes).sort((a,b)=>b[1]-a[1]);
-  if (orderedAllocated.length) {
-    winnerParty = orderedAllocated[0][0];
-  }
-  const recomputedMargin = orderedAllocated.length >= 2 ? orderedAllocated[0][1] - orderedAllocated[1][1] : (data.Margin || 0);
+  const allocated = allocateBoothVotes(rawRatios, data.Total_Polled || 0);
+  const partyVotes = allocated.partyVotes;
+  winnerParty = allocated.winnerParty || winnerParty;
+  const recomputedMargin = allocated.recomputedMargin || (data.Margin || 0);
 
   // Calculate demographics
   const ageGroups = {

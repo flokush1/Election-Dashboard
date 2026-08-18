@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Build outputs
 dist/
@@ -33,16 +32,17 @@ ENV/
 *~
 .DS_Store
 
-# Large data files
-# Excel files are too large for git and may contain sensitive voter data
+# Large / private data files
 *.xlsx
 *.xls
 *.zip
-# Exception: Include these specific prediction CSV files (small, no sensitive data)
-!predictions_r_k_puram.csv
-!predictions_new_delhi.csv
-!newdelhi_voter_predictions.csv
-# Note: CSV predictions ARE included in the repo for easy setup
+*.csv
+!public/data/**
+data/private/**
+!data/private/**/README.md
+# Do not track voter-level prediction extracts
+predictions_*.csv
+newdelhi_voter_predictions.csv
 
 # Model files (too large for git)
 # Train models locally or download separately

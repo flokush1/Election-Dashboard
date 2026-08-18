@@ -8,6 +8,8 @@ import DemographicsChart from '../charts/DemographicsChart.jsx';
 import AgeGroupChart from '../charts/AgeGroupChart.jsx';
 import SelectionDropdown from '../ui/SelectionDropdown.jsx';
 import { formatNumber, getPartyColor, formatPreviewValue } from '../../shared/utils.js';
+import { apiGet } from '../../shared/api/client.js';
+import { endpoints } from '../../shared/api/endpoints.js';
 
 const ParliamentLevel = ({ 
   data, 
@@ -27,11 +29,7 @@ const ParliamentLevel = ({
       setPreviewLoading(true);
       setPreviewError(null);
       try {
-        const res = await fetch('/api/parliament-data-preview?limit=15');
-        if (!res.ok) {
-          throw new Error(`Preview request failed (${res.status})`);
-        }
-        const json = await res.json();
+        const json = await apiGet(endpoints.parliamentPreview(15));
         if (json.success) {
           setPreview(json);
         } else {

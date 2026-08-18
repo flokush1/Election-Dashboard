@@ -7,6 +7,8 @@ import plotly.graph_objects as go
 import io, warnings, re, math
 warnings.filterwarnings('ignore')
 
+# ML core also lives in backend.ml.predictor (Streamlit-free). This file remains the analyst UI.
+
 # Optional: torch for .pth checkpoints
 try:
     import torch
